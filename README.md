@@ -13,6 +13,7 @@
 | `python src/main.py report` | 读 CSV → 本地统计 → 调模型写周报 → 输出 Markdown |
 | `python src/main.py eval` | 跑测试集，统计检索命中率 |
 | `python src/main.py logs` | 看历史问答，找出检索质量低的问题 |
+| `python src/main.py check` | 配好 key 后自检，确认模型连通 |
 
 ## 快速开始
 
@@ -23,23 +24,33 @@
 copy config.example.json config.json
 # 编辑 config.json，填入 api_key
 
-# 2. 试一下
+# 2. 先确认能通
+python src/main.py check
+
+# 3. 试一下
 python src/main.py ask "出差住宿费标准是多少"
 python src/main.py report
 python src/main.py eval
 ```
 
-`config.json` 用的是 OpenAI 兼容格式，所以换模型只改两个字段：
+### 用哪个模型：选一个永久免费的
 
-```json
-{
-  "api_key": "sk-xxxx",
-  "base_url": "https://api.deepseek.com",
-  "model": "deepseek-chat"
-}
-```
+默认配置对的是**智谱 GLM-4-Flash**，注册后永久免费、128K 上下文，中文问答够用。
 
-通义、智谱、Kimi 都有兼容接口，把 `base_url` 和 `model` 换掉即可，代码不用动。
+| 平台 | 免费政策 | base_url | model |
+| --- | --- | --- | --- |
+| 智谱（推荐） | GLM-4-Flash 永久免费 | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| 硅基流动 | 9B 以下模型永久免费 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen2.5-7B-Instruct` |
+| DeepSeek | 新用户送额度，之后很便宜 | `https://api.deepseek.com` | `deepseek-chat` |
+
+三家都是 OpenAI 兼容格式，**只改 config.json 里两个字段，代码一行不用动**——
+这也是为什么 `llm.py` 里把 `base_url` 和 `model` 做成配置项而不是写死。
+
+申请步骤（智谱，约 3 分钟）：
+1. 打开 `open.bigmodel.cn`，手机号注册
+2. 控制台左侧「API Keys」→ 新建，复制
+3. 粘进 `config.json` 的 `api_key` 字段
+4. `python src/main.py check` 确认返回正常
 
 ## 目录结构
 

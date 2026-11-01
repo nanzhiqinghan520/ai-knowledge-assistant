@@ -19,10 +19,15 @@ USAGE = """用法：
   python src/main.py ask "你的问题"     提问
   python src/main.py report            生成销售周报
   python src/main.py eval [测试集路径]  跑检索效果测试
-  python src/main.py logs              查看历史问答"""
+  python src/main.py logs              查看历史问答
+  python src/main.py check             测试 API 是否连通"""
 
 
 def cmd_ask(question):
+    if not question.strip():
+        print('问题不能为空。用法：python src/main.py ask "你的问题"')
+        return
+
     hits = kb.search(question, top_k=2)
     messages = kb.build_messages(question, hits)
 
@@ -82,26 +87,58 @@ def cmd_logs():
             print("  %s（%.3f）" % (question, score))
 
 
+def cmd_check():
+    """配好 key 之后先跑这个，确认模型那边真的通。"""
+    cfg = llm.load_config()
+    if not cfg.get("api_key", "").strip():
+        print("还没有配置 api_key。")
+        print("把 config.example.json 复制成 config.json，填入密钥后再试。")
+        return
+
+    print("模型：%s" % cfg.get("model", ""))
+    print("接口：%s" % cfg.get("base_url", ""))
+    print("正在测试连通性……\n")
+
+    reply = llm.chat([{"role": "user", "content": "只回复两个字：正常"}], max_tokens=20)
+    if reply.startswith("[调用失败]") or reply.startswith("[调用失败]") or "模拟模式" in reply:
+        print("失败。常见原因：key 填错、额度用完、模型名写错、网络不通。")
+        print(reply)
+    else:
+        print("通了。模型返回：%s" % reply.strip()[:60])
+
+
 def main():
     if len(sys.argv) < 2:
         print(USAGE)
         return
 
     action = sys.argv[1]
-    if action == "ask":
-        if len(sys.argv) < 3:
-            print('用法：python src/main.py ask "你的问题"')
-            return
-        cmd_ask(" ".join(sys.argv[2:]))
-    elif action == "report":
-        cmd_report()
-    elif action == "eval":
-        cmd_eval()
-    elif action == "logs":
-        cmd_logs()
-    else:
-        print("未知命令：%s" % action)
-        print(USAGE)
+    try:
+        if action == "ask":
+            if len(sys.argv) < 3:
+                print('用法：python src/main.py ask "你的问题"')
+                return
+            cmd_ask(" ".join(sys.argv[2:]))
+        elif action == "report":
+            cmd_report()
+        elif action == "eval":
+            cmd_eval()
+        elif action == "logs":
+            cmd_logs()
+        elif action == "check":
+            cmd_check()
+        else:
+            print("未知命令：%s\n" % action)
+            print(USAGE)
+    except FileNotFoundError as e:
+        # 数据文件被挪走或路径写错，给出能直接照做的提示，而不是 traceback
+        target = e.filename or (e.args[0] if e.args else "未知文件")
+        print("[错误] 找不到文件：%s" % target)
+        print("       请确认在项目根目录下运行，且 data/ 与 tests/ 目录完整。")
+    except KeyboardInterrupt:
+        print("\n已取消。")
+    except Exception as e:
+        print("[错误] %s: %s" % (type(e).__name__, e))
 
 
 if __name__ == "__main__":

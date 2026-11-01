@@ -10,10 +10,17 @@ CONFIG_PATH = os.path.join(ROOT, "config.json")
 
 
 def load_config():
+    """读配置。文件不存在或格式写坏了都当作"没配置"处理，不让程序崩。"""
     if not os.path.exists(CONFIG_PATH):
         return {}
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        # 用户手改配置最容易多一个逗号少一个引号，这里兜住并给出位置
+        print("[提示] config.json 读取失败：%s" % e)
+        print("       本次按未配置处理（进模拟模式）。")
+        return {}
 
 
 def is_ready():

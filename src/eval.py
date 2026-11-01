@@ -10,6 +10,9 @@ QUESTIONS = os.path.join(ROOT, "tests", "questions.json")
 
 
 def run(path=QUESTIONS, top_k=2, verbose=True):
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
     with open(path, "r", encoding="utf-8") as f:
         cases = json.load(f)
 

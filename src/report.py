@@ -8,6 +8,9 @@ DEFAULT_CSV = os.path.join(ROOT, "data", "sales.csv")
 
 
 def load_rows(path=DEFAULT_CSV):
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
     rows = []
     # utf-8-sig 是为了兼容 Excel 另存的带 BOM 的 CSV
     with open(path, "r", encoding="utf-8-sig") as f:

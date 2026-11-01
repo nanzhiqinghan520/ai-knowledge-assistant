@@ -82,16 +82,34 @@ def build_messages(question, hits):
 
 def _connect():
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS qa_log (
-               id         INTEGER PRIMARY KEY AUTOINCREMENT,
-               question   TEXT NOT NULL,
-               answer     TEXT,
-               source     TEXT,
-               score      REAL,
-               created_at TEXT DEFAULT CURRENT_TIMESTAMP
-           )"""
-    )
+    try:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS qa_log (
+                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                   question   TEXT NOT NULL,
+                   answer     TEXT,
+                   source     TEXT,
+                   score      REAL,
+                   created_at TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+        )
+    except sqlite3.DatabaseError:
+        # 文件被改坏或者根本不是数据库：备份后重建，别让日志拖垮整个程序
+        conn.close()
+        if os.path.exists(DB_PATH):
+            os.replace(DB_PATH, DB_PATH + ".bak")
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS qa_log (
+                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                   question   TEXT NOT NULL,
+                   answer     TEXT,
+                   source     TEXT,
+                   score      REAL,
+                   created_at TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+        )
+        print("[提示] 问答记录库已损坏，原文件备份为 history.db.bak，已重建。")
     return conn
 
 
