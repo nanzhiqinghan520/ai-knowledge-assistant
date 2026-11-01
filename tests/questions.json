@@ -1,0 +1,25 @@
+[
+  {"question": "出差住宿费一晚能报多少", "expect_doc": "01-报销制度.md"},
+  {"question": "报销要准备哪些材料", "expect_doc": "01-报销制度.md"},
+  {"question": "出差餐补一天多少钱", "expect_doc": "01-报销制度.md"},
+  {"question": "报销需要在几天内提交", "expect_doc": "01-报销制度.md"},
+  {"question": "坐飞机出差要谁审批", "expect_doc": "01-报销制度.md"},
+
+  {"question": "上班时间是几点到几点", "expect_doc": "02-考勤与假期.md"},
+  {"question": "迟到几次会扣全勤奖", "expect_doc": "02-考勤与假期.md"},
+  {"question": "年假有几天", "expect_doc": "02-考勤与假期.md"},
+  {"question": "请病假需要提供什么证明", "expect_doc": "02-考勤与假期.md"},
+  {"question": "男员工陪产假多少天", "expect_doc": "02-考勤与假期.md"},
+
+  {"question": "整机保修多长时间", "expect_doc": "03-产品与售后.md"},
+  {"question": "客户报障后多久必须响应", "expect_doc": "03-产品与售后.md"},
+  {"question": "省外故障多久要到现场", "expect_doc": "03-产品与售后.md"},
+  {"question": "什么情况下不能退货", "expect_doc": "03-产品与售后.md"},
+  {"question": "备件安全库存是多久的用量", "expect_doc": "03-产品与售后.md"},
+
+  {"question": "怎么申请 VPN 账号", "expect_doc": "04-IT与账号.md"},
+  {"question": "密码多久要更换一次", "expect_doc": "04-IT与账号.md"},
+  {"question": "电脑坏了找谁报修", "expect_doc": "04-IT与账号.md"},
+  {"question": "离职时电脑要归还吗", "expect_doc": "04-IT与账号.md"},
+  {"question": "ERP 系统权限怎么申请", "expect_doc": "04-IT与账号.md"}
+]

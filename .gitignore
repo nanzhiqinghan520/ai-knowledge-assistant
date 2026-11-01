@@ -1,0 +1,5 @@
+config.json
+data/history.db
+__pycache__/
+*.pyc
+data/weekly_report.md

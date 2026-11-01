@@ -1,0 +1,14 @@
+[
+  {"question": "我下周去上海出差，住宿能报多少", "expect_doc": "01-报销制度.md"},
+  {"question": "这个月的报销什么时候截止啊", "expect_doc": "01-报销制度.md"},
+  {"question": "发票丢了还能报销吗", "expect_doc": "01-报销制度.md"},
+  {"question": "早上几点到公司不算迟到", "expect_doc": "02-考勤与假期.md"},
+  {"question": "请假三天要找谁批", "expect_doc": "02-考勤与假期.md"},
+  {"question": "今年的年假没休完怎么办", "expect_doc": "02-考勤与假期.md"},
+  {"question": "相机的保修期是几年", "expect_doc": "03-产品与售后.md"},
+  {"question": "客户设备坏了你们多久能到", "expect_doc": "03-产品与售后.md"},
+  {"question": "买回来不喜欢能退吗", "expect_doc": "03-产品与售后.md"},
+  {"question": "在家办公要开什么", "expect_doc": "04-IT与账号.md"},
+  {"question": "密码忘了怎么办", "expect_doc": "04-IT与账号.md"},
+  {"question": "新来的同事电脑什么时候发", "expect_doc": "04-IT与账号.md"}
+]
