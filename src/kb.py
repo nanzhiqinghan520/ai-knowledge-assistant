@@ -3,9 +3,16 @@ import os
 import re
 import sqlite3
 
+from logger import get_logger
+
+log = get_logger("kb")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC_DIR = os.path.join(ROOT, "data", "docs")
 DB_PATH = os.path.join(ROOT, "data", "history.db")
+
+# 相似度低于这个值认为是噪声，不返回
+MIN_SCORE = 0.08
 
 
 def _flush(chunks, doc_name, heading, lines):
@@ -31,6 +38,7 @@ def load_chunks(doc_dir=DOC_DIR):
     """
     chunks = []
     if not os.path.isdir(doc_dir):
+        log.warning("文档目录不存在：%s", doc_dir)
         return chunks
 
     for name in sorted(os.listdir(doc_dir)):
@@ -68,27 +76,39 @@ def _bigrams(text):
     return set(text[i:i + 2] for i in range(len(text) - 1))
 
 
-def search(question, top_k=2):
+def search(question, top_k=2, min_score=MIN_SCORE):
     """返回 [(相似度, 文件名, 段落), ...]，按相似度降序。
 
-    相似度 = 问题与段落共有的二元组数 / 问题的二元组总数。
-    简单粗暴，但对"企业内部问答"这种同义词不多的场景够用。
+    相似度 = 命中的二元组数 ÷ 问题里二元组的个数。
+
+    曾经试过用 IDF 给稀有词加权，但在当前语料（4 份文档、30 个段落）上反而更差：
+    段落太少，IDF 估计不稳定。详见 README 的"试过但没采用"一节。
     """
+    chunks = load_chunks()
+    if not chunks:
+        return []
+
     q_grams = _bigrams(question)
     if not q_grams:
         return []
 
     scored = []
-    for name, para in load_chunks():
+    for name, para in chunks:
         p_grams = _bigrams(para)
         if not p_grams:
             continue
-        score = len(q_grams & p_grams) / float(len(q_grams))
-        if score > 0.08:               # 低于这个阈值基本是噪声
+        overlap = q_grams & p_grams
+        if not overlap:
+            continue
+        score = len(overlap) / float(len(q_grams))
+        if score >= min_score:
             scored.append((score, name, para))
 
-    scored.sort(key=lambda x: -x[0])
-    return scored[:top_k]
+    scored.sort(key=lambda item: -item[0])
+    hits = scored[:top_k]
+    log.info("检索 question=%r 候选=%d 返回=%d top=%.3f",
+             question, len(scored), len(hits), hits[0][0] if hits else 0.0)
+    return hits
 
 
 def build_messages(question, hits):
@@ -109,44 +129,46 @@ def build_messages(question, hits):
 
 # ---------- SQLite：记录问答，对应"日常运维与问题收集" ----------
 
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS qa_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    question    TEXT NOT NULL,
+    answer      TEXT,
+    source      TEXT,
+    score       REAL,
+    elapsed_ms  REAL DEFAULT 0,
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+
 def _connect():
     conn = sqlite3.connect(DB_PATH)
     try:
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS qa_log (
-                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                   question   TEXT NOT NULL,
-                   answer     TEXT,
-                   source     TEXT,
-                   score      REAL,
-                   created_at TEXT DEFAULT CURRENT_TIMESTAMP
-               )"""
-        )
+        conn.execute(_SCHEMA)
+        # 老版本的库没有 elapsed_ms 字段，这里就地补上，不用删库重建
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(qa_log)")]
+        if "elapsed_ms" not in columns:
+            conn.execute("ALTER TABLE qa_log ADD COLUMN elapsed_ms REAL DEFAULT 0")
+            log.info("数据库迁移：qa_log 增加 elapsed_ms 字段")
     except sqlite3.DatabaseError:
         # 文件被改坏或者根本不是数据库：备份后重建，别让日志拖垮整个程序
         conn.close()
         if os.path.exists(DB_PATH):
             os.replace(DB_PATH, DB_PATH + ".bak")
+            log.error("问答记录库损坏，已备份为 history.db.bak 并重建")
         conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS qa_log (
-                   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                   question   TEXT NOT NULL,
-                   answer     TEXT,
-                   source     TEXT,
-                   score      REAL,
-                   created_at TEXT DEFAULT CURRENT_TIMESTAMP
-               )"""
-        )
+        conn.execute(_SCHEMA)
         print("[提示] 问答记录库已损坏，原文件备份为 history.db.bak，已重建。")
     return conn
 
 
-def log_qa(question, answer, source, score):
+def log_qa(question, answer, source, score, elapsed_ms=0.0):
     conn = _connect()
     conn.execute(
-        "INSERT INTO qa_log (question, answer, source, score) VALUES (?, ?, ?, ?)",
-        (question, answer, source, score),
+        "INSERT INTO qa_log (question, answer, source, score, elapsed_ms) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (question, answer, source, score, elapsed_ms),
     )
     conn.commit()
     conn.close()
@@ -155,7 +177,7 @@ def log_qa(question, answer, source, score):
 def recent_logs(limit=10):
     conn = _connect()
     rows = conn.execute(
-        "SELECT question, source, ROUND(score, 3), created_at "
+        "SELECT question, source, ROUND(score, 3), ROUND(elapsed_ms), created_at "
         "FROM qa_log ORDER BY id DESC LIMIT ?", (limit,)
     ).fetchall()
     conn.close()
@@ -171,3 +193,28 @@ def low_quality_logs(threshold=0.15, limit=10):
     ).fetchall()
     conn.close()
     return rows
+
+
+def stats():
+    """运维要看的几个数：问答量、命中质量、响应速度。"""
+    conn = _connect()
+    total = conn.execute("SELECT COUNT(*) FROM qa_log").fetchone()[0]
+    today = conn.execute(
+        "SELECT COUNT(*) FROM qa_log WHERE date(created_at) = date('now', 'localtime')"
+    ).fetchone()[0]
+    avg_score = conn.execute("SELECT AVG(score) FROM qa_log").fetchone()[0] or 0.0
+    weak = conn.execute(
+        "SELECT COUNT(*) FROM qa_log WHERE score < ?", (MIN_SCORE * 2,)
+    ).fetchone()[0]
+    # 老记录迁移过来时 elapsed_ms 是 0，不能算进平均响应里
+    avg_ms = conn.execute(
+        "SELECT AVG(elapsed_ms) FROM qa_log WHERE elapsed_ms > 0"
+    ).fetchone()[0] or 0.0
+    conn.close()
+    return {
+        "total": total,
+        "today": today,
+        "avg_score": avg_score,
+        "weak": weak,
+        "avg_ms": avg_ms,
+    }

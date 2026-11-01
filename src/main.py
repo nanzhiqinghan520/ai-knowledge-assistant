@@ -1,11 +1,7 @@
-# 命令行入口。
-# 用法：
-#   python src/main.py ask "报销需要什么材料"
-#   python src/main.py report
-#   python src/main.py eval
-#   python src/main.py logs
+# 命令行入口。只做参数分发，业务逻辑都在各自的模块里。
 import os
 import sys
+import time
 
 # 让 python src/main.py 也能 import 同目录的模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,12 +10,16 @@ import eval as eval_mod
 import kb
 import llm
 import report
+from logger import get_logger
+
+log = get_logger("main")
 
 USAGE = """用法：
   python src/main.py ask "你的问题"     提问
   python src/main.py report            生成销售周报
   python src/main.py eval [测试集路径]  跑检索效果测试
   python src/main.py logs              查看历史问答
+  python src/main.py stats             看运维指标
   python src/main.py check             测试 API 是否连通"""
 
 
@@ -28,8 +28,8 @@ def cmd_ask(question):
         print('问题不能为空。用法：python src/main.py ask "你的问题"')
         return
 
+    started = time.time()
     hits = kb.search(question, top_k=2)
-    messages = kb.build_messages(question, hits)
 
     if hits:
         print("检索到的资料：")
@@ -40,15 +40,20 @@ def cmd_ask(question):
         print("检索到的资料：无")
     print()
 
+    messages = kb.build_messages(question, hits)
     answer = llm.chat(messages)
     print(answer)
 
+    elapsed_ms = (time.time() - started) * 1000
+    print("\n耗时 %.0f ms" % elapsed_ms)
+
     source = hits[0][1] if hits else ""
     score = hits[0][0] if hits else 0.0
-    kb.log_qa(question, answer, source, score)
+    kb.log_qa(question, answer, source, score, elapsed_ms)
 
 
 def cmd_report():
+    started = time.time()
     rows = report.load_rows()
     summary = report.summarize(rows)
     print("已读取 %d 条记录，总销售额 %.2f 元" % (summary["count"], summary["total"]))
@@ -60,8 +65,10 @@ def cmd_report():
     out_path = os.path.join(report.ROOT, "data", "weekly_report.md")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(md)
+
     print(md)
     print("\n已保存到 data/weekly_report.md")
+    log.info("生成周报 记录数=%d 耗时=%.0fms", summary["count"], (time.time() - started) * 1000)
 
 
 def cmd_eval():
@@ -76,9 +83,11 @@ def cmd_logs():
     if not rows:
         print("还没有问答记录。")
         return
+
     print("最近 10 条问答记录：")
-    for question, source, score, created in rows:
-        print("  [%s] %s  <- %s  相似度 %.3f" % (created, question, source or "无", score))
+    for question, source, score, elapsed, created in rows:
+        print("  [%s] %s  <- %s  相似度 %.3f  耗时 %.0fms"
+              % (created, question, source or "无", score, elapsed))
 
     weak = kb.low_quality_logs()
     if weak:
@@ -87,20 +96,38 @@ def cmd_logs():
             print("  %s（%.3f）" % (question, score))
 
 
+def cmd_stats():
+    s = kb.stats()
+    if s["total"] == 0:
+        print("还没有数据，先问几个问题再来。")
+        return
+
+    weak_rate = s["weak"] / float(s["total"]) * 100
+    print("问答总量：%d 条（今日 %d 条）" % (s["total"], s["today"]))
+    print("平均相似度：%.3f" % s["avg_score"])
+    print("低质量占比：%.1f%%（%d 条）" % (weak_rate, s["weak"]))
+    print("平均响应：%.0f ms" % s["avg_ms"])
+    print()
+    if weak_rate > 30:
+        print("提示：低质量占比偏高，说明知识库覆盖不足，建议补文档或换更强的检索方式。")
+
+
 def cmd_check():
     """配好 key 之后先跑这个，确认模型那边真的通。"""
     cfg = llm.load_config()
-    if not cfg.get("api_key", "").strip():
+    if not str(cfg.get("api_key", "")).strip():
         print("还没有配置 api_key。")
-        print("把 config.example.json 复制成 config.json，填入密钥后再试。")
+        print("把 config.example.json 复制成 config.json，填入密钥后再试；")
+        print("或者设置环境变量 LLM_API_KEY 再运行。")
         return
 
     print("模型：%s" % cfg.get("model", ""))
     print("接口：%s" % cfg.get("base_url", ""))
+    print("超时：%.0fs  重试：%d 次" % (float(cfg.get("timeout", 60)), int(cfg.get("retries", 2))))
     print("正在测试连通性……\n")
 
     reply = llm.chat([{"role": "user", "content": "只回复两个字：正常"}], max_tokens=20)
-    if reply.startswith("[调用失败]") or reply.startswith("[调用失败]") or "模拟模式" in reply:
+    if reply.startswith("[调用失败]") or "模拟模式" in reply:
         print("失败。常见原因：key 填错、额度用完、模型名写错、网络不通。")
         print(reply)
     else:
@@ -125,6 +152,8 @@ def main():
             cmd_eval()
         elif action == "logs":
             cmd_logs()
+        elif action == "stats":
+            cmd_stats()
         elif action == "check":
             cmd_check()
         else:
@@ -135,10 +164,12 @@ def main():
         target = e.filename or (e.args[0] if e.args else "未知文件")
         print("[错误] 找不到文件：%s" % target)
         print("       请确认在项目根目录下运行，且 data/ 与 tests/ 目录完整。")
+        log.error("文件缺失：%s", target)
     except KeyboardInterrupt:
         print("\n已取消。")
     except Exception as e:
         print("[错误] %s: %s" % (type(e).__name__, e))
+        log.exception("未捕获异常")
 
 
 if __name__ == "__main__":

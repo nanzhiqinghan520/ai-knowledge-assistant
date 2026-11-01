@@ -1,6 +1,7 @@
 config.json
-data/history.db
 *.bak
 __pycache__/
 *.pyc
+data/history.db
 data/weekly_report.md
+logs/
