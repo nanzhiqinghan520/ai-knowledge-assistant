@@ -56,6 +56,27 @@ python -m unittest discover -s tests -v
 3. 粘进 `config.json` 的 `api_key` 字段
 4. `python src/main.py check` 确认返回正常
 
+不想把密钥写进文件的话，用环境变量：
+
+```bash
+export LLM_API_KEY=你的密钥      # Windows: set LLM_API_KEY=你的密钥
+python src/main.py check
+```
+
+优先级是**环境变量 > config.json > 默认值**，部署时改环境变量就够了。
+
+### 用 Docker 跑
+
+```bash
+docker build -t kb-assistant .
+
+# 密钥走 -e 注入，不打进镜像
+docker run --rm -e LLM_API_KEY=你的密钥 kb-assistant ask "出差住宿费标准是多少"
+docker run --rm -e LLM_API_KEY=你的密钥 kb-assistant eval
+```
+
+镜像基于 `python:3.11-slim`，没装任何第三方包，构建大概十几秒。
+
 ## 目录结构
 
 ```
