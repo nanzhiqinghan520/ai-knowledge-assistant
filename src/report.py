@@ -43,11 +43,15 @@ def build_prompt(summary):
         "要求：200 字以内；先说整体情况，再点出最高和最低的区域，最后给一条具体可执行的建议。",
         "不要重复罗列数字，用人话总结趋势。",
         "",
+        "【硬性要求】下面的数字已经算好了，直接引用原文，"
+        "不要做单位换算（元→万元），也不要重新计算，否则容易出错。",
+        "",
         "总销售额：%.2f 元" % summary["total"],
         "订单数：%d" % summary["count"],
     ]
     for region, amount in ranked:
-        lines.append("区域 %s：%.2f 元" % (region, amount))
+        pct = amount / summary["total"] * 100 if summary["total"] else 0
+        lines.append("区域 %s：%.2f 元（占比 %.1f%%）" % (region, amount, pct))
     return "\n".join(lines)
 
 

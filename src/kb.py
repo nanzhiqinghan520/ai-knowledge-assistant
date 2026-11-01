@@ -8,10 +8,26 @@ DOC_DIR = os.path.join(ROOT, "data", "docs")
 DB_PATH = os.path.join(ROOT, "data", "history.db")
 
 
+def _flush(chunks, doc_name, heading, lines):
+    """把攒着的几行合成一个段落，并带上它所属的小标题。
+
+    带标题这一步很关键：像"住宿标准"这种小标题下面的段落，
+    正文里可能只有"一线城市每晚上限 500 元"，一个"住宿"都没有。
+    如果切块时把标题丢掉，这段就永远检索不到。
+    """
+    text = " ".join(lines).strip()
+    if len(text) < 8:
+        return
+    if heading:
+        text = heading + " " + text
+    chunks.append((doc_name, text))
+
+
 def load_chunks(doc_dir=DOC_DIR):
     """把每份文档按空行切成段落，返回 [(文件名, 段落), ...]。
 
     切的粒度是段落而不是整篇：整篇太长塞不进 prompt，句子又太碎丢上下文。
+    每段前面拼上所属小标题，避免段落脱离上下文后检索不到。
     """
     chunks = []
     if not os.path.isdir(doc_dir):
@@ -20,12 +36,25 @@ def load_chunks(doc_dir=DOC_DIR):
     for name in sorted(os.listdir(doc_dir)):
         if not name.endswith(".md"):
             continue
+
         with open(os.path.join(doc_dir, name), "r", encoding="utf-8") as f:
-            text = f.read()
-        for para in re.split(r"\n\s*\n", text):
-            para = para.strip()
-            if len(para) >= 8:          # 太短的段落（比如标题）跳过
-                chunks.append((name, para))
+            lines = f.read().splitlines()
+
+        heading = ""
+        buffer = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                _flush(chunks, name, heading, buffer)
+                buffer = []
+                heading = stripped.lstrip("#").strip()
+            elif not stripped:
+                _flush(chunks, name, heading, buffer)
+                buffer = []
+            else:
+                buffer.append(stripped)
+        _flush(chunks, name, heading, buffer)
+
     return chunks
 
 
